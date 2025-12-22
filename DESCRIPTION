@@ -1,15 +1,21 @@
 Package: rssistat
 Type: Package
-Title: What the Package Does (One Line, Title Case)
+Title: ISTAT RSS Feed Discovery and Analysis
 Version: 0.1.0
 Authors@R: person("Giampaolo Montaletti", email = "giampaolo.montaletti@gmail.com",
                   role = c("aut", "cre"))
-Description: What the package does (one paragraph).
+Description: Discover and analyze RSS feeds from ISTAT (Italian National
+    Institute of Statistics) website. Provides tools for scanning web pages
+    to find RSS/Atom feed URLs, parsing feed content, and summarizing news.
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.1
+RoxygenNote: 7.3.2
+Imports:
+    data.table,
+    httr2,
+    xml2
 Suggests: 
     testthat (>= 3.0.0)
 Config/testthat/edition: 3

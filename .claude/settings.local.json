@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Skill(r-package-setup)",
+      "Bash(python3:*)"
+    ]
+  }
+}

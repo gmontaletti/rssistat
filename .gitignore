@@ -1,0 +1,12 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+.DS_Store
+*.so
+*.o
+*.dll
+renv/library/
+renv/local/
+renv/staging/

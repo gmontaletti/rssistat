@@ -6,7 +6,7 @@ You can install the development version of rssistat from GitHub:
 
 ```r
 # install.packages("devtools")
-devtools::install_github("username/rssistat")
+devtools::install_github("gmontaletti/rssistat")
 ```
 
 ## Usage

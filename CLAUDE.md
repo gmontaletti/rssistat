@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Package Overview
 
-**rssistat** - R package for Italian statistical data analysis (to be developed)
+**rssistat** - R package for ISTAT web site RSS discovery and use (summaryse news, download files mentioned)  
 
 - **Author/Maintainer**: Giampaolo Montaletti (giampaolo.montaletti@gmail.com)
 - **GitHub**: github.com/gmontaletti
@@ -54,8 +54,30 @@ Standard CRAN-compliant structure:
 Conventional commits: `type(scope): description`
 - Types: feat, fix, docs, style, refactor, test, chore
 
+## Test Workflow Directory
+
+External test directory with targets pipeline: `../test/rsstest/`
+
+```
+../test/rsstest/
+├── _targets.R          # Pipeline definition (tests rssistat functions)
+├── R/
+│   └── functions.R     # Helper functions (summarize_feeds, generate_report)
+├── output/             # Generated outputs (created on run)
+└── _targets/           # Targets metadata (created on run)
+```
+
+```r
+# Run targets workflow
+setwd("../test/rsstest")
+targets::tar_make()              # Execute pipeline
+targets::tar_visnetwork()        # Visualize dependencies
+targets::tar_read(all_feeds)     # Read specific target
+```
+
 ## Important Notes
 
 - The `.claude/` directory must not be moved during cleanup
+- The `../test/` directory contains integration tests (do not move)
 - Use agents for complex tasks
 - Use btw MCP tools for R library documentation, not for websites or standard APIs

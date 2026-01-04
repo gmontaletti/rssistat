@@ -15,6 +15,7 @@ RoxygenNote: 7.3.2
 Imports:
     data.table,
     httr2,
+    tools,
     xml2
 Suggests: 
     testthat (>= 3.0.0)

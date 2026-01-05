@@ -1,7 +1,7 @@
 Package: rssistat
 Type: Package
 Title: ISTAT RSS Feed Discovery and Analysis
-Version: 0.1.0
+Version: 0.1.1
 Authors@R: person("Giampaolo Montaletti", email = "giampaolo.montaletti@gmail.com",
                   role = c("aut", "cre"))
 Description: Discover and analyze RSS feeds from ISTAT (Italian National

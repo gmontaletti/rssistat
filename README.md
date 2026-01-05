@@ -1,4 +1,4 @@
-# rssistat
+# rssistat 0.1.1
 
 ## Installation
 

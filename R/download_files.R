@@ -7,10 +7,14 @@
 #' @param feed An rss_feed object created by \code{\link{fetch_feed}}.
 #' @param types Character vector of file extensions to download. Case-insensitive.
 #'   Default: \code{c("pdf", "xlsx", "xls", "csv", "zip")}.
+#' @param since Filter to items published on or after this date. Accepts Date,
+#'   POSIXct, or character in "YYYY-MM-DD" format. Default \code{Sys.Date()}
+#'   downloads only items published today or later.
 #' @param destdir Destination directory for downloads. Created if it does not exist.
 #'   Default: \code{"."} (current directory).
 #' @param create_subdir Logical. If \code{TRUE}, creates subdirectory structure
-#'   \code{{theme}/{YYYYMMDD}/} based on feed metadata. Default: \code{TRUE}.
+#'   \code{{theme}/{YYYYMMDD}/} where YYYYMMDD is each item's publication date.
+#'   Items without valid pub_date use the current date. Default: \code{TRUE}.
 #' @param overwrite Logical. If \code{TRUE}, overwrites existing files. If \code{FALSE},
 #'   skips downloads for existing files. Default: \code{FALSE}.
 #' @param timeout Numeric. Download timeout per file in seconds. Default: \code{60}.
@@ -50,23 +54,37 @@
 #'   create_subdir = FALSE,
 #'   overwrite = TRUE
 #' )
+#'
+#' # Download files from last 30 days
+#' results <- download_attachments(feed, since = Sys.Date() - 30)
+#'
+#' # Download files from specific date onwards
+#' results <- download_attachments(feed, since = "2025-01-01")
+#'
+#' # Download all files regardless of date
+#' results <- download_attachments(feed, since = as.Date("1970-01-01"))
 #' }
 #'
 #' @export
 #' @importFrom data.table data.table setDT
 #' @importFrom httr2 request req_timeout req_perform req_error
-download_attachments <- function(feed,
-                                 types = c("pdf", "xlsx", "xls", "csv", "zip"),
-                                 destdir = ".",
-                                 create_subdir = TRUE,
-                                 overwrite = FALSE,
-                                 timeout = 60,
-                                 verbose = FALSE) {
-
+download_attachments <- function(
+  feed,
+  types = c("pdf", "xlsx", "xls", "csv", "zip"),
+  since = Sys.Date(),
+  destdir = ".",
+  create_subdir = TRUE,
+  overwrite = FALSE,
+  timeout = 60,
+  verbose = FALSE
+) {
   # 1. Input validation -----
 
   if (!inherits(feed, "rss_feed")) {
-    stop("'feed' must be an rss_feed object created by fetch_feed()", call. = FALSE)
+    stop(
+      "'feed' must be an rss_feed object created by fetch_feed()",
+      call. = FALSE
+    )
   }
 
   if (!is.character(types) || length(types) == 0) {
@@ -77,7 +95,11 @@ download_attachments <- function(feed,
     stop("'destdir' must be a single non-empty string", call. = FALSE)
   }
 
-  if (!is.logical(create_subdir) || length(create_subdir) != 1 || is.na(create_subdir)) {
+  if (
+    !is.logical(create_subdir) ||
+      length(create_subdir) != 1 ||
+      is.na(create_subdir)
+  ) {
     stop("'create_subdir' must be TRUE or FALSE", call. = FALSE)
   }
 
@@ -89,8 +111,40 @@ download_attachments <- function(feed,
     stop("'verbose' must be TRUE or FALSE", call. = FALSE)
   }
 
-  if (!is.numeric(timeout) || length(timeout) != 1 || is.na(timeout) || timeout <= 0) {
+  if (
+    !is.numeric(timeout) ||
+      length(timeout) != 1 ||
+      is.na(timeout) ||
+      timeout <= 0
+  ) {
     stop("'timeout' must be a positive number", call. = FALSE)
+  }
+
+  # Validate and convert since parameter to POSIXct
+  since_posix <- tryCatch(
+    {
+      if (inherits(since, "POSIXt")) {
+        since
+      } else if (inherits(since, "Date")) {
+        as.POSIXct(since, tz = "UTC")
+      } else if (is.character(since)) {
+        as.POSIXct(since, format = "%Y-%m-%d", tz = "UTC")
+      } else {
+        stop("invalid type")
+      }
+    },
+    error = function(e) {
+      stop(
+        "'since' must be Date, POSIXct, or character in 'YYYY-MM-DD' format",
+        call. = FALSE
+      )
+    }
+  )
+  if (is.na(since_posix)) {
+    stop(
+      "'since' must be Date, POSIXct, or character in 'YYYY-MM-DD' format",
+      call. = FALSE
+    )
   }
 
   # 2. Filter links by type -----
@@ -118,7 +172,10 @@ download_attachments <- function(feed,
 
   if (nrow(to_download) == 0) {
     if (verbose) {
-      message(sprintf("No links found with types: %s", paste(types, collapse = ", ")))
+      message(sprintf(
+        "No links found with types: %s",
+        paste(types, collapse = ", ")
+      ))
     }
     return(data.table::data.table(
       url = character(0),
@@ -134,9 +191,55 @@ download_attachments <- function(feed,
     message(sprintf("Found %d file(s) to download", nrow(to_download)))
   }
 
-  # 3. Create destination directory -----
+  # Join with items to get pub_date for each link
+  if (
+    !is.null(feed$items) &&
+      nrow(feed$items) > 0 &&
+      "pub_date" %in% names(feed$items)
+  ) {
+    items_lookup <- feed$items[, .(link, pub_date)]
+    to_download <- merge(
+      to_download,
+      items_lookup,
+      by.x = "item_link",
+      by.y = "link",
+      all.x = TRUE,
+      sort = FALSE
+    )
+  } else {
+    to_download[, pub_date := as.POSIXct(NA)]
+  }
 
-  download_dir <- destdir
+  # Apply since filter (always runs since since defaults to Sys.Date())
+  original_count <- nrow(to_download)
+  to_download <- to_download[is.na(pub_date) | pub_date >= since_posix]
+
+  if (verbose && nrow(to_download) < original_count) {
+    message(sprintf(
+      "Filtered out %d file(s) published before %s",
+      original_count - nrow(to_download),
+      format(since_posix, "%Y-%m-%d")
+    ))
+  }
+
+  if (nrow(to_download) == 0) {
+    if (verbose) {
+      message("No links found after applying date filter")
+    }
+    return(data.table::data.table(
+      url = character(0),
+      filename = character(0),
+      path = character(0),
+      size = numeric(0),
+      status = character(0),
+      error = character(0)
+    ))
+  }
+
+  # 3. Prepare base directory -----
+
+  base_dir <- destdir
+  theme <- NULL
 
   if (create_subdir) {
     # Extract theme from feed metadata
@@ -147,28 +250,7 @@ download_attachments <- function(feed,
 
     # Clean theme for use in directory name (remove special characters)
     theme <- gsub("[^[:alnum:]_-]", "_", theme)
-
-    # Get date from most recent item or current date
-    date_str <- if (!is.null(feed$items) && nrow(feed$items) > 0 && "pub_date" %in% names(feed$items)) {
-      max_date <- max(feed$items$pub_date, na.rm = TRUE)
-      if (!is.na(max_date)) {
-        format(max_date, "%Y%m%d")
-      } else {
-        format(Sys.Date(), "%Y%m%d")
-      }
-    } else {
-      format(Sys.Date(), "%Y%m%d")
-    }
-
-    download_dir <- file.path(destdir, theme, date_str)
-  }
-
-  # Create directory if it doesn't exist
-  if (!dir.exists(download_dir)) {
-    dir.create(download_dir, recursive = TRUE, showWarnings = FALSE)
-    if (verbose) {
-      message(sprintf("Created directory: %s", download_dir))
-    }
+    base_dir <- file.path(destdir, theme)
   }
 
   # 4. Download each file -----
@@ -177,6 +259,7 @@ download_attachments <- function(feed,
 
   for (i in seq_len(nrow(to_download))) {
     url <- to_download$url[i]
+    item_pub_date <- to_download$pub_date[i]
 
     if (verbose) {
       message(sprintf("[%d/%d] Downloading: %s", i, nrow(to_download), url))
@@ -192,48 +275,71 @@ download_attachments <- function(feed,
       error = NA_character_
     )
 
-    tryCatch({
-      # Generate filename
-      filename <- .generate_filename(url)
-      full_path <- file.path(download_dir, filename)
-
-      result$filename <- filename
-      result$path <- full_path
-
-      # Check if file exists
-      if (file.exists(full_path) && !overwrite) {
-        result$status <- "skipped"
-        result$size <- file.info(full_path)$size
-        if (verbose) {
-          message(sprintf("  Skipped (file exists): %s", filename))
+    tryCatch(
+      {
+        # Determine download directory based on item's pub_date
+        if (create_subdir) {
+          date_str <- .get_item_date_str(item_pub_date, Sys.Date())
+          download_dir <- file.path(base_dir, date_str)
+        } else {
+          download_dir <- destdir
         }
-      } else {
-        # Download file
-        req <- httr2::request(url)
-        req <- httr2::req_timeout(req, timeout)
 
-        # Perform download
-        resp <- httr2::req_perform(req, path = full_path)
+        # Create directory if needed
+        if (!dir.exists(download_dir)) {
+          dir.create(download_dir, recursive = TRUE, showWarnings = FALSE)
+          if (verbose) {
+            message(sprintf("  Created directory: %s", download_dir))
+          }
+        }
 
-        # Check file was created and get size
-        if (file.exists(full_path)) {
-          result$status <- "downloaded"
+        # Generate filename
+        filename <- .generate_filename(url)
+        full_path <- file.path(download_dir, filename)
+
+        result$filename <- filename
+        result$path <- full_path
+
+        # Check if file exists
+        if (file.exists(full_path) && !overwrite) {
+          result$status <- "skipped"
           result$size <- file.info(full_path)$size
           if (verbose) {
-            message(sprintf("  Downloaded: %s (%s bytes)", filename, result$size))
+            message(sprintf("  Skipped (file exists): %s", filename))
           }
         } else {
-          result$status <- "failed"
-          result$error <- "File not created after download"
+          # Download file
+          req <- httr2::request(url)
+          req <- httr2::req_timeout(req, timeout)
+
+          # Perform download
+          resp <- httr2::req_perform(req, path = full_path)
+
+          # Check file was created and get size
+          if (file.exists(full_path)) {
+            result$status <- "downloaded"
+            result$size <- file.info(full_path)$size
+            if (verbose) {
+              message(sprintf(
+                "  Downloaded: %s (%s bytes)",
+                filename,
+                result$size
+              ))
+            }
+          } else {
+            result$status <- "failed"
+            result$error <- "File not created after download"
+          }
+        }
+      },
+      error = function(e) {
+        result$status <<- "failed"
+        result$error <<- conditionMessage(e)
+        if (verbose) {
+          message(sprintf("  Failed: %s", conditionMessage(e)))
         }
       }
-    }, error = function(e) {
-      result$status <<- "failed"
-      result$error <<- conditionMessage(e)
-      if (verbose) {
-        message(sprintf("  Failed: %s", conditionMessage(e)))
-      }
-    })
+    )
 
     results[[i]] <- result
   }
@@ -248,7 +354,9 @@ download_attachments <- function(feed,
     n_failed <- sum(results_dt$status == "failed")
     message(sprintf(
       "Download complete: %d downloaded, %d skipped, %d failed",
-      n_downloaded, n_skipped, n_failed
+      n_downloaded,
+      n_skipped,
+      n_failed
     ))
   }
 
@@ -271,7 +379,6 @@ download_attachments <- function(feed,
 #' @noRd
 #' @keywords internal
 .generate_filename <- function(url, resp = NULL) {
-
   # Future enhancement: extract from Content-Disposition header if resp provided
   # For now, use basename approach
 
@@ -301,4 +408,25 @@ download_attachments <- function(feed,
   }
 
   return(filename)
+}
+
+
+#' Get Date String for Directory Naming
+#'
+#' Internal helper function to determine the date string (YYYYMMDD) for
+#' directory naming based on the publication date of an item.
+#'
+#' @param pub_date POSIXct. The publication date of the item.
+#' @param fallback_date Date. Fallback date when pub_date is NA or invalid.
+#'   Default: \code{Sys.Date()}.
+#'
+#' @return Character. Date string in YYYYMMDD format.
+#'
+#' @noRd
+#' @keywords internal
+.get_item_date_str <- function(pub_date, fallback_date = Sys.Date()) {
+  if (is.na(pub_date) || is.infinite(pub_date)) {
+    return(format(fallback_date, "%Y%m%d"))
+  }
+  format(pub_date, "%Y%m%d")
 }

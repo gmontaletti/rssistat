@@ -7,6 +7,7 @@
 download_attachments(
   feed,
   types = c("pdf", "xlsx", "xls", "csv", "zip"),
+  since = Sys.Date(),
   destdir = ".",
   create_subdir = TRUE,
   overwrite = FALSE,
@@ -20,11 +21,16 @@ download_attachments(
 \item{types}{Character vector of file extensions to download. Case-insensitive.
 Default: \code{c("pdf", "xlsx", "xls", "csv", "zip")}.}
 
+\item{since}{Filter to items published on or after this date. Accepts Date,
+POSIXct, or character in "YYYY-MM-DD" format. Default \code{Sys.Date()}
+downloads only items published today or later.}
+
 \item{destdir}{Destination directory for downloads. Created if it does not exist.
 Default: \code{"."} (current directory).}
 
 \item{create_subdir}{Logical. If \code{TRUE}, creates subdirectory structure
-\code{{theme}/{YYYYMMDD}/} based on feed metadata. Default: \code{TRUE}.}
+\code{{theme}/{YYYYMMDD}/} where YYYYMMDD is each item's publication date.
+Items without valid pub_date use the current date. Default: \code{TRUE}.}
 
 \item{overwrite}{Logical. If \code{TRUE}, overwrites existing files. If \code{FALSE},
 skips downloads for existing files. Default: \code{FALSE}.}
@@ -73,6 +79,15 @@ results <- download_attachments(
   create_subdir = FALSE,
   overwrite = TRUE
 )
+
+# Download files from last 30 days
+results <- download_attachments(feed, since = Sys.Date() - 30)
+
+# Download files from specific date onwards
+results <- download_attachments(feed, since = "2025-01-01")
+
+# Download all files regardless of date
+results <- download_attachments(feed, since = as.Date("1970-01-01"))
 }
 
 }

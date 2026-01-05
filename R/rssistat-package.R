@@ -18,6 +18,8 @@ utils::globalVariables(c(
   "item_link",
   "source",
   "text",
+  "link",
+  ".",
   # download_files.R
   "status",
   "N",
